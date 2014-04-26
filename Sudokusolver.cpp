@@ -1,11 +1,13 @@
 /*This work is licensed under a Creative Commons Attribution 4.0 International License
 view  http://creativecommons.org/licenses/by/4.0/  for further details*/
+/*Gowtham Rangarjan*/
 
 /*SudoKu solver*/
 
 
 #include<iostream> 
 #include<fstream> 
+#include <stdarg.h>
 #include <stdlib.h>
 #include<stdio.h>
 #include <time.h>
@@ -16,6 +18,7 @@ using namespace std;
 #define END 13 /*Bit position that is used to indicate the cell to be filled*/
 #define INPUTFILE "sudoku.in"
 #define OUTPUTFILE "Solver.out"
+#define UNITTESTFILE "Manysudoku.in"
 #define CLEARBIT(x,v) (x&(~(1<<(v)))) 
 #define COPY_STATE(dest,src) \
 {\
@@ -28,7 +31,8 @@ for(int _i=0;_i<SUDOKU_SIZE;_i++)\
 if(flg)\
 	printf("Verbose mode ON ...:"format"\n");\
 	
-
+#define UPPER_BOUND 25
+#define LOWER_BOUND 5
 
 
 
@@ -38,7 +42,8 @@ long long solvesudoku(unsigned int a[][SUDOKU_SIZE], unsigned int output[][SUDOK
 unsigned int iscomplete(unsigned int output[][SUDOKU_SIZE]);
 void fill(unsigned int value, unsigned int r, unsigned int c,unsigned int output[][SUDOKU_SIZE]);
 unsigned int fillup(unsigned int output[][SUDOKU_SIZE]);
-void print_output_array(unsigned int output[SUDOKU_SIZE][SUDOKU_SIZE]);
+
+void print_output_array(unsigned int output[SUDOKU_SIZE][SUDOKU_SIZE],...);
 int backtrack(unsigned int output[][SUDOKU_SIZE]);
 
 /*Unit Test*/
@@ -48,57 +53,190 @@ bool generatePuzzles(unsigned int a[][SUDOKU_SIZE],int seed,int blocks);
 void interpretoutput(unsigned int src[SUDOKU_SIZE][SUDOKU_SIZE] , unsigned int dest[SUDOKU_SIZE][SUDOKU_SIZE]);
 int verifypuzzle(unsigned int a[SUDOKU_SIZE][SUDOKU_SIZE],int r,int c);
 
-bool verbose =true;/*In case user needs more details*/
+bool verbose =false;/*In case user needs more details*/
 bool debug = false;/*In case of problems programmer*/
 bool profiler=true;
 
+/*
+Pick random memorized solution from File
+*/
+
+
+void rotate90(unsigned int a[SUDOKU_SIZE][SUDOKU_SIZE]);
+void reflect_horizontal(unsigned int a[SUDOKU_SIZE][SUDOKU_SIZE]);
+void reflect_vertical(unsigned int a[SUDOKU_SIZE][SUDOKU_SIZE]);
+void relabel(unsigned int a[SUDOKU_SIZE][SUDOKU_SIZE]);
+
+
+int randompermutor = 0;
+int totalpermutor = 0;
+
+void relabel(unsigned int a[SUDOKU_SIZE][SUDOKU_SIZE]){
+	unsigned int relabel[SUDOKU_SIZE];
+	//choose a random permutation
+	
+	int swaps = SUDOKU_SIZE;
+	for(int i=0;i<SUDOKU_SIZE;i++)
+		relabel[i]=i;
+	
+	//Truly random ?	
+	for(int i=0;i<swaps;i++,totalpermutor++){
+		int r1 = rand()%(SUDOKU_SIZE)+1;
+		int r2 = SUDOKU_SIZE - rand()%(SUDOKU_SIZE);
+		
+		while(r1==r2){
+			randompermutor++;
+			totalpermutor++;
+			
+			r1 = rand()%(SUDOKU_SIZE)+1;
+			r2 = SUDOKU_SIZE - rand()%(SUDOKU_SIZE);
+		
+		}
+		swap(relabel[r1],relabel[r2]);
+	}
+		
+	for(int i=0;i<SUDOKU_SIZE;i++)
+		for(int j=0;j<SUDOKU_SIZE;j++){
+			a[i][j] = relabel[a[i][j]];
+		}
+}
+
+
+void rotate90(unsigned int a[SUDOKU_SIZE][SUDOKU_SIZE]){
+unsigned temp[SUDOKU_SIZE][SUDOKU_SIZE];
+
+for(int i=0;i<SUDOKU_SIZE;i++)
+	for(int j=0;j<SUDOKU_SIZE;j++)
+		temp[SUDOKU_SIZE-1-j][i] = a[i][j];
+memcpy(a,temp,sizeof(temp));
+}
+
+void reflect_horizontal(unsigned int a[SUDOKU_SIZE][SUDOKU_SIZE]){
+for(int i=0;i<SUDOKU_SIZE;i++)
+	for(int j=0;j<SUDOKU_SIZE/2;j++)
+		swap(a[i][j],a[SUDOKU_SIZE-1-i][j]);
+
+}
+
+void reflect_vertical(unsigned int a[SUDOKU_SIZE][SUDOKU_SIZE]){
+for(int i=0;i<SUDOKU_SIZE;i++)
+	for(int j=0;j<SUDOKU_SIZE/2;j++)
+		swap(a[i][j],a[i][SUDOKU_SIZE-1-j]);
+}
 
 void unitTest(){
 
-for(int i=0;i<1000;i++){
-	unsigned int a[SUDOKU_SIZE][SUDOKU_SIZE];
-	unsigned int output[SUDOKU_SIZE][SUDOKU_SIZE];
-	int blocksfilled = ((rand()%(SUDOKU_SIZE)+ 17));
-	
-	if(!generatePuzzles(a,(i*i<<2+i^65362 + i-842),blocksfilled))
-		continue;
-	if(verbose){
-		cout<<"Printing after generation"<<endl;
-		print_output_array(a);
-	}
+	for(int i=0;i<3000;i++){
+		unsigned int a[SUDOKU_SIZE][SUDOKU_SIZE];
+		unsigned int output[SUDOKU_SIZE][SUDOKU_SIZE];
+		unsigned int interpret[SUDOKU_SIZE][SUDOKU_SIZE];
+		memset(a,0,sizeof(a));
+		memset(output,0,sizeof(interpret));
+		memset(interpret,0,sizeof(interpret));
 		
-	long long timetaken =time(NULL);
-	timetaken-= solvesudoku(a,output);
-	//PROFILE();
-		if(profiler){
-			FILE* fp = fopen("prof.txt","ab");
-			fprintf(fp,"%d,%d,%lld\n",i,blocksfilled,timetaken);
-			fclose(fp);
-		}
-	}
+		int blocksfilled = 0;
+		/*Generating random number between lower and upper bound*/
+		blocksfilled = ((rand()%(UPPER_BOUND-LOWER_BOUND)))+LOWER_BOUND;
+		
+		
+		int n;
+		ifstream fin;
+		fin.open(UNITTESTFILE);		
+		fin>>n;
+		while(n--){
+			for(int k=0;k<SUDOKU_SIZE;k++){
+				for(int l=0;l<SUDOKU_SIZE;l++){
+					fin>>a[k][l];	
+					//cout<<"Hello"<<endl;
+				}
+				
+			}
+		
+			//cout<<"Done reading sol"<<endl;
+		
 
+		
+			if(!generatePuzzles(a,((i*i)^(i)),blocksfilled))
+				continue;
+			/*if(verbose){
+				cout<<"Printing after generation"<<endl;
+				print_output_array(a);
+			}*/
+				
+				print_output_array(a,"UnitTestinputSudoku.in");
+				
+			
+				
+			long long timetaken =time(NULL);
+			timetaken-= solvesudoku(a,interpret);
+			//PROFILE();
+				if(profiler){
+					FILE* fp = fopen("prof.txt","ab");
+					fprintf(fp,"%d,%d,%lld\n",i,blocksfilled,timetaken);
+					fclose(fp);
+				}
+			interpretoutput(interpret,output);
+			
+			/*if(verbose){
+				cout<<"Printing after solving"<<endl;
+				print_output_array(output);
+			}*/		
+			print_output_array(output,"UnitTestOutputSudoKu.out");
+		}
+
+		}
 }
+
+
 bool generatePuzzles(unsigned int a[][SUDOKU_SIZE],int seed,int blocks) {
 	srand ( seed );
+	unsigned int temp[SUDOKU_SIZE][SUDOKU_SIZE];
+	
 	memset(a,0,sizeof(a));
+	memset(temp,0,sizeof(temp));
 	int incorrect;
 	int times = 0;
+	int numberofoperations = (rand()%(SUDOKU_SIZE*10));
+	//cout<<"Random operations !"<<numberofoperations<<endl;
+	while(numberofoperations--){
+		switch (rand()%4){
+			case (0):{
+				//cout<<"Random operations 0"<<endl;
+				rotate90(a);
+				break;
+			}
+			case (1):
+				//cout<<"Random operations 1"<<endl;
+				reflect_vertical(a);
+				break;
+			case (2):
+				//cout<<"Random operations 2"<<endl;
+				reflect_horizontal(a);
+				break;
+			case (3):
+				//cout<<"Relabeling"<<endl;
+				relabel(a);
+				break;
+		
+		}
 	
-		
-		
+	}
+	//cout<<"Done"<<endl;
+	
+	
 	for(int i=0;i<blocks;i++){
 		
 		int r = rand()%SUDOKU_SIZE;
 		int c = rand()%SUDOKU_SIZE;
-		a[r][c] = rand()%SUDOKU_SIZE;
-		cout<<"vallll "<<a[r][c]<<endl;
+		temp[r][c] =a[r][c];
+		//cout<<"vallll "<<a[r][c]<<endl;
 		incorrect = verifypuzzle(a,r,c);
 		if(incorrect!=0){
 			a[r][c] = 0;
 			i--;
 			times++;
 		}
-		cout<<"vallll out "<<a[r][c]<<endl;
+		//cout<<"vallll out "<<a[r][c]<<endl;
 		if(times >= 100){
 			cout<<"unable to generate random puzzle"<<blocks<<endl;
 			return false;
@@ -116,8 +254,7 @@ bool generatePuzzles(unsigned int a[][SUDOKU_SIZE],int seed,int blocks) {
 int verifypuzzle(unsigned int a[SUDOKU_SIZE][SUDOKU_SIZE],int r,int c){
 	int incorrect = 0;
 
-	//for(int i=0;i<SUDOKU_SIZE;i++)
-	//	for(int j=0;j<SUDOKU_SIZE;j++)
+	
 	
 	{
 		int i=r,j=c;
@@ -146,9 +283,6 @@ int verifypuzzle(unsigned int a[SUDOKU_SIZE][SUDOKU_SIZE],int r,int c){
 	
 	return incorrect;		
 }
-
-
-
 
 /*Helper*/
 /*
@@ -266,9 +400,6 @@ long long solvesudoku(unsigned int a[][SUDOKU_SIZE], unsigned int output[][SUDOK
 		
 	}
 	
-	
-	if(verbose)
-		print_output_array(output);
 	return 0;
 }
 
@@ -341,22 +472,60 @@ unsigned int iscomplete(unsigned int output[][SUDOKU_SIZE]){
 
 
 /*Helper*/
-void print_output_array(unsigned int output[SUDOKU_SIZE][SUDOKU_SIZE]){
-cout<<endl<<endl<<endl;
+void print_output_array(unsigned int output[SUDOKU_SIZE][SUDOKU_SIZE],...){
+                     
+    char* filename = NULL;
+	va_list arguments;    
+	va_start ( arguments, output);    
+    filename = va_arg ( arguments, char* ); 
+	va_end ( arguments );
+	FILE* f = NULL;
+	//cout<<filename<<endl;
+	if(filename!= NULL) {
+		f = fopen(filename,"ab");	
+		
+	} 
+	
+	//ostream fout(buf,app);	
+	if(f!= NULL) {
+			fprintf(f,"\n\n");
+	}
+		fprintf(stdout,"\n\n");
+	//fout<<endl<<endl<<endl;
 	for(unsigned int i=0;i<SUDOKU_SIZE;i++){
 		for(unsigned int j=0;j<SUDOKU_SIZE;j++){
-			cout<<output[i][j]<<" ";				
+			//fout<<output[i][j]<<" ";	
+			if(f!= NULL) {				
+				fprintf(f,"%u ",output[i][j]);
+				
+			}
+				fprintf(stdout,"%u ",output[i][j]);
 			
 			
 		}
-		cout<<endl;
+		//fout<<endl;
+		if(f!= NULL) {				
+				fprintf(f,"\n");
+			}
+		fprintf(stdout,"\n");
 	
 	}
-cout<<endl<<endl<<endl;
+	if(f!= NULL) {				
+		fprintf(f,"\n\n");
+	}
+			fprintf(stdout,"\n\n");
+
+	if(f!= NULL) {	
+		//cout<<"closing"<<endl;
+		fclose(f);
+	}
+	
+	
 }
 
 
 void interpretoutput(unsigned int src[SUDOKU_SIZE][SUDOKU_SIZE] , unsigned int dest[SUDOKU_SIZE][SUDOKU_SIZE]){
+memset(dest,0,sizeof(dest));
 	for(unsigned int i=0;i<SUDOKU_SIZE;i++){
 		for(unsigned int j=0;j<SUDOKU_SIZE;j++){
 			
@@ -381,7 +550,8 @@ cout<<endl<<endl<<"USAGE :: executible <options,one or many>"<<endl;
 cout<<"Options (all are case sensitive)"<<endl;
 cout<<"		-h : Help , this menu"<<endl;
 cout<<"		-UnitTest :Run unit test on sudoku solver "<<endl;
-cout<<"		-Profile : Run Profiler calculate the time taken write into prof.txt in the same location as the executible [Switched on by default]"<<endl;
+cout<<"		-V :Verbose mode ON "<<endl;
+cout<<"		-ProfilerOFF : Run Profiler calculate the time taken write into prof.txt in the same location as the executible [Switched on by default]"<<endl;
 cout<<endl<<endl;
 
 }
@@ -389,23 +559,29 @@ cout<<endl<<endl;
 int main(int argc , char* argv[]){
 
 	profiler = true;
+	verbose = false;
 	if(argc>1){
-		if(memcmp(argv[1],"-ProfilerOFF",sizeof(char)*12) == 0)
-			profiler = false;		
+		for(int i=1;i<argc;i++){
+			if(memcmp(argv[i],"-ProfilerOFF",sizeof(char)*12) == 0)
+				profiler = false;	
+			if(memcmp(argv[i],"-V",sizeof(char)*2) == 0)
+				verbose = true;	
 		
-		if(memcmp(argv[1],"-h",sizeof(char)*2) == 0){
-			usage();
-			return 0;
-		}else{
-			if(memcmp(argv[1],"-UnitTest",sizeof(char)*3) == 0){
-				unitTest();
+			
+			if(memcmp(argv[i],"-h",sizeof(char)*2) == 0){
+				usage();
 				return 0;
 			}
-			
+			if(memcmp(argv[i],"-UnitTest",sizeof(char)*9) == 0){
+					unitTest();
+					cout<<"Randompermutor totalpermutor"<<randompermutor<<" "<<totalpermutor<<endl;
+					return 0;
+			}
+				
 		}
-		
+	}	
 
-	}
+
 
 	ifstream fin;
 	ofstream fout;
@@ -440,23 +616,6 @@ int main(int argc , char* argv[]){
 			fout<<endl;
 		}
 		
-		/*for(unsigned int i=0;i<SUDOKU_SIZE;i++){
-			for(unsigned int j=0;j<SUDOKU_SIZE;j++){
-				fout<<" ";
-				int flg =0;
-				for(int _p=1;_p<=SUDOKU_SIZE;_p++){
-					if(!(output[i][j]& ~(1<<END | 1<<_p))){
-						fout<<_p;
-						flg=1;
-						break;
-					}
-				}
-				if(!flg)
-					fout<<0;
-			}
-		fout<<endl;	
-		}*/
-
 	}
 
 
